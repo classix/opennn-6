@@ -376,9 +376,7 @@ namespace opennn
     const NeuralNetworkForwardPropagation& forward_propagation,
     LossIndexBackPropagation& back_propagation) const
   {
-    const Index trainable_layers_number = neural_network_pointer->get_trainable_layers_number();
-
-    LayerBackPropagation* output_layer_back_propagation = back_propagation.neural_network.layers(trainable_layers_number - 1);
+    LayerBackPropagation* output_layer_back_propagation = back_propagation.neural_network.layers(neural_network_pointer->get_trainable_layers_number() - 1);
 
     Layer* output_layer_pointer = output_layer_back_propagation->layer_pointer;
 
@@ -454,7 +452,7 @@ namespace opennn
       case ErrorMethod::CROSS_ENTROPY_ERROR:
       {
         const Tensor<type, 2>& outputs =
-          static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1))->activations_class[c];
+          static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(neural_network_pointer->get_last_trainable_layer_index()))->activations_class[c];
 
         TensorMap<Tensor<type, 2>> targets(batch.targets_data, batch.targets_dimensions(0), batch.targets_dimensions(1));
         Tensor<type, 2> targets_class(batch.get_batch_size(), multi_perceptron_layer->getCatColCount()[c]);
@@ -562,9 +560,7 @@ namespace opennn
 
 #endif
 
-    const Index trainable_layers_number = neural_network_pointer->get_trainable_layers_number();
-
-    LayerBackPropagation* output_layer_back_propagation = back_propagation.neural_network.layers(trainable_layers_number - 1);
+    LayerBackPropagation* output_layer_back_propagation = back_propagation.neural_network.layers(neural_network_pointer->get_trainable_layers_number() - 1);
 
     Layer* output_layer_pointer = output_layer_back_propagation->layer_pointer;
 
@@ -638,7 +634,7 @@ namespace opennn
       case ErrorMethod::CROSS_ENTROPY_ERROR:
       {
         const Tensor<type, 2>& outputs =
-          static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1))->activations_class[c];
+          static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(neural_network_pointer->get_last_trainable_layer_index()))->activations_class[c];
 
         TensorMap<Tensor<type, 2>> targets(batch.targets_data, batch.targets_dimensions(0), batch.targets_dimensions(1));
         Tensor<type, 2> targets_class(batch.get_batch_size(), multi_perceptron_layer->getCatColCount()[c]);

@@ -341,9 +341,8 @@ void LossIndex::calculate_errors(const DataSetBatch& batch,
     }
 #endif
 
-    const Index trainable_layers_number = neural_network_pointer->get_trainable_layers_number();
-    if (forward_propagation.layers(trainable_layers_number - 1)->layer_pointer->get_type() == opennn::Layer::Type::MultiPerceptron) {
-      MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1));
+    if (output_layer_forward_propagation->layer_pointer->get_type() == opennn::Layer::Type::MultiPerceptron) {
+      MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(last_trainable_layer_index));
       MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
 
       Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
