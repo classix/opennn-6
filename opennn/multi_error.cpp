@@ -451,6 +451,7 @@ namespace opennn
       switch (lossClass) {
       case ErrorMethod::CROSS_ENTROPY_ERROR:
       {
+        // Wir benötigen die `get_last_trainable_layer_index` Methode, falls Skalierungs- oder Bounding-Layer in der Netzwerkarchitektur vorhanden sind
         const Tensor<type, 2>& outputs =
           static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(neural_network_pointer->get_last_trainable_layer_index()))->activations_class[c];
 
@@ -633,6 +634,7 @@ namespace opennn
       switch (lossClass) {
       case ErrorMethod::CROSS_ENTROPY_ERROR:
       {
+        // Wir benötigen die `get_last_trainable_layer_index` Methode, falls Skalierungs- oder Bounding-Layer in der Netzwerkarchitektur vorhanden sind
         const Tensor<type, 2>& outputs =
           static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(neural_network_pointer->get_last_trainable_layer_index()))->activations_class[c];
 

@@ -341,6 +341,7 @@ void LossIndex::calculate_errors(const DataSetBatch& batch,
     }
 #endif
 
+    // Wir prüfen den Typ des letzten Layers, der mittels `get_last_trainable_layer_index` ermittelt wurde, da MultiPerceptronLayer Fehler anders berechnet als andere Layer
     if (output_layer_forward_propagation->layer_pointer->get_type() == opennn::Layer::Type::MultiPerceptron) {
       MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(last_trainable_layer_index));
       MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);

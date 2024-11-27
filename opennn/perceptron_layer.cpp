@@ -966,6 +966,7 @@ void PerceptronLayer::calculate_hidden_delta_multi_perceptron(MultiPerceptronLay
     }
   }
 
+  // Es ist nicht notwendig, die Daten explizit zu setzen, da die `deltas` Variable mit dem Pointer auf die Daten initialisiert wurde
   //back_propagation->deltas_data = deltas.data();
 }
 

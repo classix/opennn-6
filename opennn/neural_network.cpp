@@ -1799,6 +1799,7 @@ void NeuralNetwork::forward_propagate(const DataSetBatch& batch,
     const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = first_trainable_layer_index + 1; i <= last_trainable_layer_index; i++)
     {
+      // Wir müssen den Typ des vorherigen Layers prüfen, da die Outputs von MultiPerceptron Layern anders aufgebaut sind
       if (layers_pointers(i-1)->get_type() == Layer::Type::MultiPerceptron) {
         MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i-1));
         MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
@@ -1855,6 +1856,7 @@ void NeuralNetwork::forward_propagate_deploy(DataSetBatch& batch,
     const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = 1; i < layers_number; i++)
     {
+      // Wir müssen den Typ des vorherigen Layers prüfen, da die Outputs von MultiPerceptron Layern anders aufgebaut sind
       if (layers_pointers(i-1)->get_type() == Layer::Type::MultiPerceptron) {
         MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i-1));
         MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
