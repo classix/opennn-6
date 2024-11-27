@@ -548,6 +548,7 @@ public:
 
     void set_columns_number(const Index&);
 
+    void set_column_scaler(const Index&, const Scaler&);
     void set_columns_scalers(const Scaler&);
 
     void set_binary_simple_columns();

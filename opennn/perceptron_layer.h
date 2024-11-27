@@ -43,6 +43,10 @@ struct ProbabilisticLayerForwardPropagation;
 struct ProbabilisticLayerBackPropagation;
 struct ProbabilisticLayerBackPropagationLM;
 
+struct MultiPerceptronLayerForwardPropagation;
+struct MultiPerceptronLayerBackPropagation;
+struct MultiPerceptronLayerBackPropagationLM;
+
 #ifdef OPENNN_CUDA
     #include "../../opennn-cuda/opennn-cuda/struct_perceptron_layer_cuda.h"
 #endif
@@ -178,6 +182,10 @@ public:
    void calculate_hidden_delta(LayerForwardPropagation*,
                                LayerBackPropagation*,
                                LayerBackPropagation*) const final;
+
+   void calculate_hidden_delta_multi_perceptron(MultiPerceptronLayerForwardPropagation*,
+     MultiPerceptronLayerBackPropagation*,
+     PerceptronLayerBackPropagation*) const;
 
    void calculate_hidden_delta(PerceptronLayerForwardPropagation*,
                                PerceptronLayerBackPropagation*,

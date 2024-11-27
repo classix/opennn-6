@@ -126,6 +126,7 @@ public:
    // Training methods
 
    TrainingResults perform_training() final;
+   TrainingResults perform_training(std::function<void(double)> callback);
 
    string write_optimization_algorithm_type() const final;
 

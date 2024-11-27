@@ -4,7 +4,7 @@
 // Author    : Antoine YESSAYAN, Paul RASCLE, EDF
 // Project   : SALOME
 // Copyright : EDF 2001
-// $Header$
+// $Header: //basis_libs/main/Libs-source/opennn/eigen/bench/btl/generic_bench/utils/utilities.h#3 $
 //=============================================================================
 
 /* ---  Definition macros file to print information if _DEBUG_ is defined --- */

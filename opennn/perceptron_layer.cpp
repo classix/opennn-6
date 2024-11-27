@@ -7,6 +7,7 @@
 //   artelnics@artelnics.com
 
 #include "perceptron_layer.h"
+#include "multi_perceptron_layer.h"
 
 namespace opennn
 {
@@ -846,8 +847,126 @@ void PerceptronLayer::calculate_hidden_delta(LayerForwardPropagation* next_layer
     }
         break;
 
+    case Type::MultiPerceptron:
+    {
+      MultiPerceptronLayerForwardPropagation* next_perceptron_layer_forward_propagation =
+        static_cast<MultiPerceptronLayerForwardPropagation*>(next_layer_forward_propagation);
+
+      MultiPerceptronLayerBackPropagation* next_perceptron_layer_back_propagation =
+        static_cast<MultiPerceptronLayerBackPropagation*>(next_layer_back_propagation);
+
+      calculate_hidden_delta_multi_perceptron(next_perceptron_layer_forward_propagation,
+        next_perceptron_layer_back_propagation,
+        perceptron_layer_back_propagation);
+    }
+    break;
+
     default: return;
     }
+}
+
+void PerceptronLayer::calculate_hidden_delta_multi_perceptron(MultiPerceptronLayerForwardPropagation* next_forward_propagation,
+  MultiPerceptronLayerBackPropagation* next_back_propagation,
+  PerceptronLayerBackPropagation* back_propagation) const
+{
+  const MultiPerceptronLayer* probabilistic_layer_pointer = static_cast<MultiPerceptronLayer*>(next_back_propagation->layer_pointer);
+
+  const Tensor<type, 2>& next_synaptic_weights = probabilistic_layer_pointer->get_synaptic_weights();
+
+  TensorMap<Tensor<type, 2>> deltas(back_propagation->deltas_data, back_propagation->deltas_dimensions(0), back_propagation->deltas_dimensions(1));
+
+  deltas.setZero();
+
+  if (probabilistic_layer_pointer->getRegColCount() > 0) {
+    Tensor<type, 2> next_synaptic_weights_reg(next_synaptic_weights.dimension(0), probabilistic_layer_pointer->getRegColCount());
+    for (size_t i = 0; i < next_synaptic_weights_reg.dimension(0); i++) {
+      for (size_t j = 0; j < next_synaptic_weights_reg.dimension(1); j++) {
+        next_synaptic_weights_reg(i, j) = next_synaptic_weights(i, probabilistic_layer_pointer->getRegCols()[j]);
+      }
+    }
+    //Tensor<type, 2> next_synaptic_weights_reg = next_synaptic_weights.slice(Eigen::array<Index, 2>({ 0, 0 }), Eigen::array<Index, 2>({ next_synaptic_weights.dimension(0), probabilistic_layer_pointer->getRegCols() }));
+
+    Tensor<type, 2> delta_reg(deltas.dimension(0), deltas.dimension(1));
+    delta_reg.device(*thread_pool_device) =
+      (next_back_propagation->delta_reg * next_forward_propagation->activations_derivatives_reg).contract(next_synaptic_weights_reg, A_BT);
+    for (Index row = 0; row < delta_reg.dimension(0); row++) {
+      for (Index col = 0; col < delta_reg.dimension(1); col++) {
+        deltas(row, col) += delta_reg(row, col);
+      }
+    }
+  }
+
+  for (size_t c = 0; c < probabilistic_layer_pointer->getCatCount(); c++) {
+    Tensor<type, 2> next_synaptic_weights_class(next_synaptic_weights.dimension(0), probabilistic_layer_pointer->getCatColCount()[c]);
+    for (size_t i = 0; i < next_synaptic_weights_class.dimension(0); i++) {
+      for (size_t j = 0; j < next_synaptic_weights_class.dimension(1); j++) {
+        next_synaptic_weights_class(i, j) = next_synaptic_weights(i, probabilistic_layer_pointer->getCatCols()[c][j]);
+      }
+    }
+    //Tensor<type, 2> next_synaptic_weights_class = next_synaptic_weights.slice(Eigen::array<Index, 2>({ 0, colOffset }), Eigen::array<Index, 2>({ next_synaptic_weights.dimension(0), categorySize }));
+
+    Tensor<type, 2> delta_class(deltas.dimension(0), deltas.dimension(1));
+    if (probabilistic_layer_pointer->getCatColCount()[c] == 1) // Binary
+    {
+      const Index samples_number = next_back_propagation->delta_class[c].dimension(0);
+      const Index outputs_number = next_back_propagation->delta_class[c].dimension(1);
+      const Index next_layer_neurons_number = probabilistic_layer_pointer->getCatColCount()[c];
+
+      const Index step = next_layer_neurons_number * next_layer_neurons_number;
+
+      for (Index s = 0; s < samples_number; s++)
+      {
+        next_back_propagation->delta_row[c] = next_back_propagation->delta_class[c].chip(s, 0);
+
+        TensorMap< Tensor<type, 2> > activations_derivatives_matrix(next_forward_propagation->activations_derivatives_class[c].data() + s * step,
+          next_layer_neurons_number, next_layer_neurons_number);
+
+        next_back_propagation->error_combinations_derivatives[c].chip(s, 0) =
+          next_back_propagation->delta_row[c].contract(activations_derivatives_matrix, AT_B);
+      }
+
+      delta_class.device(*thread_pool_device) =
+        (next_back_propagation->error_combinations_derivatives[c]).contract(next_synaptic_weights_class, A_BT);
+    }
+    else // Multiple
+    {
+      if (probabilistic_layer_pointer->get_activation_functions().second != MultiPerceptronLayer::ActivationFunction::Softmax)
+      {
+        delta_class.device(*thread_pool_device) =
+          (next_back_propagation->delta_class[c] * next_forward_propagation->activations_derivatives_class[c]).contract(next_synaptic_weights_class, A_BT);
+      }
+      else
+      {
+        const Index samples_number = next_back_propagation->delta_class[c].dimension(0);
+        const Index outputs_number = next_back_propagation->delta_class[c].dimension(1);
+        const Index next_layer_neurons_number = probabilistic_layer_pointer->getCatColCount()[c];
+
+        const Index step = next_layer_neurons_number * next_layer_neurons_number;
+
+        for (Index s = 0; s < samples_number; s++)
+        {
+          next_back_propagation->delta_row[c] = next_back_propagation->delta_class[c].chip(s, 0);
+
+          TensorMap< Tensor<type, 2> > activations_derivatives_matrix(next_forward_propagation->activations_derivatives_class[c].data() + s * step,
+            next_layer_neurons_number, next_layer_neurons_number);
+
+          next_back_propagation->error_combinations_derivatives[c].chip(s, 0) =
+            next_back_propagation->delta_row[c].contract(activations_derivatives_matrix, AT_B);
+        }
+
+        delta_class.device(*thread_pool_device) =
+          (next_back_propagation->error_combinations_derivatives[c]).contract(next_synaptic_weights_class, A_BT);
+      }
+    }
+
+    for (Index row = 0; row < delta_class.dimension(0); row++) {
+      for (Index col = 0; col < delta_class.dimension(1); col++) {
+        deltas(row, col) += delta_class(row, col);
+      }
+    }
+
+    back_propagation->deltas_data = deltas.data();
+  }
 }
 
 

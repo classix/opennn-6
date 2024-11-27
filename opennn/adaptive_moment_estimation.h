@@ -105,6 +105,7 @@ public:
    // Training methods
 
    TrainingResults perform_training() final;
+   TrainingResults perform_training(std::function<void(double)> callback);
 
    /// Return the algorithm optimum for your model.
 

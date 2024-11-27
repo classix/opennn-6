@@ -661,7 +661,7 @@ Tensor<type,1> calculate_spearman_ranks(const Tensor<type,1> & x)
     vector<type> x_rank_vector(n);
     type rank = 1.0;
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
 
     for (size_t i = 0U; i < v_sort.size(); ++i)
     {

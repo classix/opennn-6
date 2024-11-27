@@ -1796,12 +1796,47 @@ void NeuralNetwork::forward_propagate(const DataSetBatch& batch,
 
     layers_pointers(first_trainable_layer_index)->forward_propagate(batch.inputs_data, batch.inputs_dimensions, forward_propagation.layers(first_trainable_layer_index), switch_train);
 
+    const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = first_trainable_layer_index + 1; i <= last_trainable_layer_index; i++)
     {
-        layers_pointers(i)->forward_propagate(forward_propagation.layers(i-1)->outputs_data,
-                                              forward_propagation.layers(i-1)->outputs_dimensions,
-                                              forward_propagation.layers(i),
-                                              switch_train);
+      if (layers_pointers(i)->get_type() == Layer::Type::MultiPerceptron) {
+        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1));
+        MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
+
+        Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+        for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+          cols += act.dimension(1);
+        }
+        Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+
+        for (size_t row = 0; row < activations.dimension(0); row++) {
+          for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+            activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+          }
+        }
+
+        for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+          for (size_t row = 0; row < activations.dimension(0); row++) {
+            for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+              activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+            }
+          }
+        }
+
+        Eigen::Tensor<Eigen::Index, 1> activations_dimensions(2);
+        activations_dimensions(0) = activations.dimension(0);
+        activations_dimensions(1) = activations.dimension(1);
+        layers_pointers(i)->forward_propagate(activations.data(),
+          activations_dimensions,
+          forward_propagation.layers(i),
+          switch_train);
+      }
+      else {
+        layers_pointers(i)->forward_propagate(forward_propagation.layers(i - 1)->outputs_data,
+          forward_propagation.layers(i - 1)->outputs_dimensions,
+          forward_propagation.layers(i),
+          switch_train);
+      }
     }
 }
 
@@ -1817,12 +1852,47 @@ void NeuralNetwork::forward_propagate_deploy(DataSetBatch& batch,
 
     layers_pointers(0)->forward_propagate(batch.inputs_data, batch.inputs_dimensions, forward_propagation.layers(0), switch_train);
 
+    const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = 1; i < layers_number; i++)
     {
-        layers_pointers(i)->forward_propagate(forward_propagation.layers(i-1)->outputs_data,
-                                              forward_propagation.layers(i-1)->outputs_dimensions,
-                                              forward_propagation.layers(i),
-                                              switch_train);
+      if (layers_pointers(i)->get_type() == Layer::Type::MultiPerceptron) {
+        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i));
+        MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
+
+        Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+        for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+          cols += act.dimension(1);
+        }
+        Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+
+        for (size_t row = 0; row < activations.dimension(0); row++) {
+          for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+            activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+          }
+        }
+
+        for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+          for (size_t row = 0; row < activations.dimension(0); row++) {
+            for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+              activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+            }
+          }
+        }
+
+        Eigen::Tensor<Eigen::Index, 1> activations_dimensions(2);
+        activations_dimensions(0) = activations.dimension(0);
+        activations_dimensions(1) = activations.dimension(1);
+        layers_pointers(i)->forward_propagate(activations.data(),
+          activations_dimensions,
+          forward_propagation.layers(i),
+          switch_train);
+      }
+      else {
+        layers_pointers(i)->forward_propagate(forward_propagation.layers(i - 1)->outputs_data,
+          forward_propagation.layers(i - 1)->outputs_dimensions,
+          forward_propagation.layers(i),
+          switch_train);
+      }
     }
 }
 
@@ -3291,6 +3361,26 @@ void NeuralNetwork::layers_from_XML(const tinyxml2::XMLDocument& document)
             }
 
             add_layer(bounding_layer);
+        }
+        else if (layers_types(i) == "MultiPerceptron")
+        {
+          MultiPerceptronLayer* perceptron_layer = new MultiPerceptronLayer();
+
+          const tinyxml2::XMLElement* perceptron_element = start_element->NextSiblingElement("MultiPerceptronLayer");
+          start_element = perceptron_element;
+          if (perceptron_element)
+          {
+            tinyxml2::XMLDocument perceptron_document;
+            tinyxml2::XMLNode* element_clone;
+
+            element_clone = perceptron_element->DeepClone(&perceptron_document);
+
+            perceptron_document.InsertFirstChild(element_clone);
+
+            perceptron_layer->from_XML(perceptron_document);
+          }
+
+          add_layer(perceptron_layer);
         }
     }
 }

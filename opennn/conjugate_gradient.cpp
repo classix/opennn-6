@@ -932,6 +932,255 @@ TrainingResults ConjugateGradient::perform_training()
     return results;
 }
 
+/// Trains a neural network with an associated loss index according to the conjugate gradient algorithm.
+/// Training occurs according to the training operators, training parameters and stopping criteria.
+
+TrainingResults ConjugateGradient::perform_training(std::function<void(double)> callback)
+{
+  check();
+
+  // Start training
+
+  if (display) cout << "Training with conjugate gradient...\n";
+
+  TrainingResults results(maximum_epochs_number + 1);
+
+  // Elapsed time
+
+  time_t beginning_time;
+  time_t current_time;
+  time(&beginning_time);
+  type elapsed_time = type(0);
+
+  // Data set
+
+  DataSet* data_set_pointer = loss_index_pointer->get_data_set_pointer();
+
+  const Index training_samples_number = data_set_pointer->get_training_samples_number();
+  const Index selection_samples_number = data_set_pointer->get_selection_samples_number();
+  const bool has_selection = data_set_pointer->has_selection();
+
+  const Tensor<Index, 1> training_samples_indices = data_set_pointer->get_training_samples_indices();
+  const Tensor<Index, 1> selection_samples_indices = data_set_pointer->get_selection_samples_indices();
+
+  const Tensor<Index, 1> input_variables_indices = data_set_pointer->get_input_variables_indices();
+  const Tensor<Index, 1> target_variables_indices = data_set_pointer->get_target_variables_indices();
+
+  const Tensor<string, 1> inputs_names = data_set_pointer->get_input_variables_names();
+  const Tensor<string, 1> targets_names = data_set_pointer->get_target_variables_names();
+
+  const Tensor<Scaler, 1> input_variables_scalers = data_set_pointer->get_input_variables_scalers();
+  const Tensor<Scaler, 1> target_variables_scalers = data_set_pointer->get_target_variables_scalers();
+
+  const Tensor<Descriptives, 1> input_variables_descriptives = data_set_pointer->scale_input_variables();
+  Tensor<Descriptives, 1> target_variables_descriptives;
+
+  // Neural network
+
+  NeuralNetwork* neural_network_pointer = loss_index_pointer->get_neural_network_pointer();
+
+  if (neural_network_pointer->has_scaling_layer())
+  {
+    ScalingLayer* scaling_layer_pointer = neural_network_pointer->get_scaling_layer_pointer();
+    scaling_layer_pointer->set(input_variables_descriptives, input_variables_scalers);
+  }
+
+  if (neural_network_pointer->has_unscaling_layer())
+  {
+    target_variables_descriptives = data_set_pointer->scale_target_variables();
+
+    UnscalingLayer* unscaling_layer_pointer = neural_network_pointer->get_unscaling_layer_pointer();
+    unscaling_layer_pointer->set(target_variables_descriptives, target_variables_scalers);
+  }
+
+  DataSetBatch training_batch(training_samples_number, data_set_pointer);
+  training_batch.fill(training_samples_indices, input_variables_indices, target_variables_indices);
+
+  DataSetBatch selection_batch(selection_samples_number, data_set_pointer);
+  selection_batch.fill(selection_samples_indices, input_variables_indices, target_variables_indices);
+
+  NeuralNetworkForwardPropagation training_forward_propagation(training_samples_number, neural_network_pointer);
+  NeuralNetworkForwardPropagation selection_forward_propagation(selection_samples_number, neural_network_pointer);
+
+  // Loss index
+
+  string information;
+
+  loss_index_pointer->set_normalization_coefficient();
+
+  LossIndexBackPropagation training_back_propagation(training_samples_number, loss_index_pointer);
+  LossIndexBackPropagation selection_back_propagation(selection_samples_number, loss_index_pointer);
+
+  // Optimization algorithm
+
+  type old_loss = type(0);
+  type loss_decrease = numeric_limits<type>::max();
+
+  bool stop_training = false;
+  bool switch_train = true;
+  Index selection_failures = 0;
+
+  ConjugateGradientData optimization_data(this);
+
+  // Main loop
+
+  for (Index epoch = 0; epoch <= maximum_epochs_number; epoch++)
+  {
+    callback(type(epoch) / maximum_epochs_number);
+
+    if (display && epoch % display_period == 0) cout << "Epoch: " << epoch << endl;
+
+    optimization_data.epoch = epoch;
+
+    // Neural network
+
+    neural_network_pointer->forward_propagate(training_batch, training_forward_propagation, switch_train);
+
+    // Loss index
+
+    loss_index_pointer->back_propagate(training_batch, training_forward_propagation, training_back_propagation);
+    results.training_error_history(epoch) = training_back_propagation.error;
+
+    // Update parameters
+
+    update_parameters(training_batch, training_forward_propagation, training_back_propagation, optimization_data);
+
+    if (has_selection)
+    {
+      neural_network_pointer->forward_propagate(selection_batch, selection_forward_propagation, switch_train);
+
+      loss_index_pointer->calculate_errors(selection_batch, selection_forward_propagation, selection_back_propagation);
+      loss_index_pointer->calculate_error(selection_batch, selection_forward_propagation, selection_back_propagation);
+
+      results.selection_error_history(epoch) = selection_back_propagation.error;
+
+      if (epoch != 0 && results.selection_error_history(epoch) > results.selection_error_history(epoch - 1)) selection_failures++;
+    }
+
+    // Optimization algorithm
+
+    time(&current_time);
+    elapsed_time = static_cast<type>(difftime(current_time, beginning_time));
+
+    if (display && epoch % display_period == 0)
+    {
+      cout << "Training error: " << training_back_propagation.error << endl;
+      if (has_selection) cout << "Selection error: " << selection_back_propagation.error << endl;
+      cout << "Learning rate: " << optimization_data.learning_rate << endl;
+      cout << "Elapsed time: " << write_time(elapsed_time) << endl;
+    }
+
+    // Stopping Criteria       
+
+    if (results.training_error_history(epoch) < training_loss_goal)
+    {
+      stop_training = true;
+
+      results.stopping_condition = StoppingCondition::LossGoal;
+
+      if (display) cout << "Epoch " << epoch << endl << "Loss goal reached: " << results.training_error_history(epoch) << endl;
+    }
+
+    if (has_selection && selection_failures >= maximum_selection_failures)
+    {
+      if (display) cout << "Epoch " << epoch << endl << "Maximum selection failures reached: " << selection_failures << endl;
+
+      stop_training = true;
+
+      results.stopping_condition = StoppingCondition::MaximumSelectionErrorIncreases;
+    }
+
+    if (epoch == maximum_epochs_number)
+    {
+      if (display) cout << "Epoch " << epoch << endl << "Maximum number of epochs reached: " << epoch << endl;
+
+      stop_training = true;
+
+      results.stopping_condition = StoppingCondition::MaximumEpochsNumber;
+    }
+
+    if (elapsed_time >= maximum_time)
+    {
+      if (display) cout << "Epoch " << epoch << endl << "Maximum training time reached: " << write_time(elapsed_time) << endl;
+
+      stop_training = true;
+
+      results.stopping_condition = StoppingCondition::MaximumTime;
+    }
+
+    if (epoch != 0) loss_decrease = old_loss - training_back_propagation.loss;
+
+    if (loss_decrease <= minimum_loss_decrease)
+    {
+      if (display) cout << "Epoch " << epoch << endl << "Minimum loss decrease reached: " << minimum_loss_decrease << endl;
+
+      stop_training = true;
+
+      results.stopping_condition = StoppingCondition::MinimumLossDecrease;
+    }
+
+    old_loss = training_back_propagation.loss;
+
+    if (stop_training)
+    {
+      results.loss = training_back_propagation.loss;
+
+      results.loss_decrease = loss_decrease;
+
+      results.selection_failures = selection_failures;
+
+      results.resize_training_error_history(epoch + 1);
+
+      if (has_selection) results.resize_selection_error_history(epoch + 1);
+      else results.resize_selection_error_history(0);
+
+      results.elapsed_time = write_time(elapsed_time);
+
+      break;
+    }
+
+    // Update stuff
+
+    if (epoch != 0 && epoch % save_period == 0) neural_network_pointer->save(neural_network_file_name);
+  }
+
+  if (neural_network_pointer->get_project_type() == NeuralNetwork::ProjectType::AutoAssociation)
+  {
+    Tensor<type, 2> inputs = data_set_pointer->get_training_input_data();
+    Tensor<Index, 1> inputs_dimensions = get_dimensions(inputs);
+
+    type* input_data = inputs.data();
+
+    //        Tensor<type, 2> outputs = neural_network_pointer->calculate_unscaled_outputs(input_data, inputs_dimensions);
+    Tensor<type, 2> outputs = neural_network_pointer->calculate_scaled_outputs(input_data, inputs_dimensions);
+    Tensor<Index, 1> outputs_dimensions = get_dimensions(outputs);
+
+    type* outputs_data = outputs.data();
+
+    Tensor<type, 1> samples_distances = neural_network_pointer->calculate_samples_distances(input_data, inputs_dimensions, outputs_data, outputs_dimensions);
+    Descriptives distances_descriptives(samples_distances);
+
+    BoxPlot distances_box_plot = calculate_distances_box_plot(input_data, inputs_dimensions, outputs_data, outputs_dimensions);
+
+    Tensor<type, 2> multivariate_distances = neural_network_pointer->calculate_multivariate_distances(input_data, inputs_dimensions, outputs_data, outputs_dimensions);
+    Tensor<BoxPlot, 1> multivariate_distances_box_plot = data_set_pointer->calculate_data_columns_box_plot(multivariate_distances);
+
+    neural_network_pointer->set_distances_box_plot(distances_box_plot);
+    neural_network_pointer->set_variables_distances_names(data_set_pointer->get_input_variables_names());
+    neural_network_pointer->set_multivariate_distances_box_plot(multivariate_distances_box_plot);
+    neural_network_pointer->set_distances_descriptives(distances_descriptives);
+  }
+
+  data_set_pointer->unscale_input_variables(input_variables_descriptives);
+
+  if (neural_network_pointer->has_unscaling_layer())
+    data_set_pointer->unscale_target_variables(target_variables_descriptives);
+
+  if (display) results.print();
+
+  return results;
+}
+
 
 /// Writes a matrix of strings the most representative atributes.
 

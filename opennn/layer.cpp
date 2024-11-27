@@ -67,6 +67,9 @@ string Layer::get_type_string() const
     case Type::Resnet50:
         return "Resnet50";
 
+    case Type::MultiPerceptron:
+      return "MultiPerceptron";
+
     default:
         return "Unkown type";
     }
@@ -2044,7 +2047,7 @@ void Layer::softmax(type* x_data, const Tensor<Index, 1>& x_dimensions,
         Tensor<type, 1> inverse_sums(rows_number);
         inverse_sums.setZero();
 
-        Eigen::array<int, 1> dims({1}); // Eigen reduction cols Axis
+        Eigen::array<int, 1> dims = {1}; // Eigen reduction cols Axis
         inverse_sums = y.sum(dims).inverse();
 
     #pragma omp parallel for

@@ -337,8 +337,10 @@ pair<type,type> LearningRateAlgorithm::calculate_directional_point(
     pair<type, type> V;
 
     // Reduce the interval
-
-    while(abs(triplet.A.first - triplet.B.first) > learning_rate_tolerance
+    // Added additional check for loss > loss_tolerance, since if this is not the case, we don't want to increase the learning rate.
+    // Additionally, UpreviousError added to exit the loop if the middle learning rate error doesn't experience a relative improvement of at least 1%.
+    type UpreviousError = triplet.U.second;
+    while(abs(triplet.A.second) > loss_tolerance && abs(triplet.A.first - triplet.B.first) > learning_rate_tolerance
        || abs(triplet.A.second - triplet.B.second) > loss_tolerance)
     {
         try
@@ -422,6 +424,11 @@ pair<type,type> LearningRateAlgorithm::calculate_directional_point(
         {
             return triplet.minimum();
         }
+
+        if ((UpreviousError - triplet.U.second) / triplet.U.second < 0.01) {
+          break;
+        }
+        UpreviousError = triplet.U.second;
     }
 
     return triplet.U;
@@ -508,6 +515,8 @@ LearningRateAlgorithm::Triplet LearningRateAlgorithm::calculate_bracketing_tripl
 
     Index count = 0;
 
+    // Added BpreviousError to check for improvements in potential parameters
+    type BpreviousError = triplet.B.second;
     do
     {
         count++;
@@ -526,7 +535,13 @@ LearningRateAlgorithm::Triplet LearningRateAlgorithm::calculate_bracketing_tripl
 
         triplet.B.second = back_propagation.error + regularization_weight*regularization;
 
-    } while((abs(triplet.A.second - triplet.B.second) < loss_tolerance) && (triplet.A.second != triplet.B.second));
+        if (triplet.B.second - BpreviousError < loss_tolerance) {
+          break;
+        }
+        BpreviousError = triplet.B.second;
+
+        // Added additional check for loss > loss_tolerance, since if this is not the case, we don't want to increase the learning rate.
+    } while(abs(triplet.A.second) > loss_tolerance && (abs(triplet.A.second - triplet.B.second) < loss_tolerance) && (triplet.A.second != triplet.B.second));
 
     if(triplet.A.second > triplet.B.second)
     {

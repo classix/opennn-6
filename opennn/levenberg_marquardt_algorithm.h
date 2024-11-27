@@ -102,6 +102,7 @@ public:
    void check() const final;
 
    TrainingResults perform_training() final;
+   TrainingResults perform_training(std::function<void(double)> callback);
 
    void update_parameters(
            const DataSetBatch&,

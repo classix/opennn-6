@@ -29,6 +29,7 @@
 #include "minkowski_error.h"
 #include "cross_entropy_error.h"
 #include "weighted_squared_error.h"
+#include "multi_error.h"
 
 #include "optimization_algorithm.h"
 
@@ -74,7 +75,8 @@ public:
         NORMALIZED_SQUARED_ERROR,
         MINKOWSKI_ERROR,
         WEIGHTED_SQUARED_ERROR,
-        CROSS_ENTROPY_ERROR
+        CROSS_ENTROPY_ERROR,
+        MULTI_ERROR
     };
 
     /// Enumeration of all the available types of optimization algorithms.
@@ -107,6 +109,7 @@ public:
     MinkowskiError* get_Minkowski_error_pointer();
     CrossEntropyError* get_cross_entropy_error_pointer();
     WeightedSquaredError* get_weighted_squared_error_pointer();
+    MultiError* get_multi_error_pointer();
 
     GradientDescent* get_gradient_descent_pointer();
     ConjugateGradient* get_conjugate_gradient_pointer();
@@ -162,6 +165,7 @@ public:
     // Training methods
 
     TrainingResults perform_training();
+    TrainingResults perform_training(std::function<void(double)> callback);
 
     // Check methods
 
@@ -209,6 +213,10 @@ private:
     /// Pointer to the weighted squared error object wich can be used as the error term.
 
     WeightedSquaredError weighted_squared_error;
+
+    /// Pointer to the multi error object wich can be used as the error term.
+
+    MultiError multi_error;
 
     /// Type of loss method.
 

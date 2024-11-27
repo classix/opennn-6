@@ -57,7 +57,7 @@ namespace opennn
 {
     using namespace std;
     using namespace Eigen;
-    using type = float;
+    using type = double;
 //    typedef double type;
 }
 

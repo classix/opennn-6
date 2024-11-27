@@ -326,8 +326,6 @@ void LossIndex::calculate_errors(const DataSetBatch& batch,
 
     const Tensor<Index, 1> outputs_dimensions = output_layer_forward_propagation->outputs_dimensions;
 
-    const TensorMap<Tensor<type, 2>> outputs(output_layer_forward_propagation->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
-
     const TensorMap<Tensor<type, 2>> targets(batch.targets_data, batch.targets_dimensions(0), batch.targets_dimensions(1));
 
 #ifdef OPENNN_DEBUG
@@ -343,7 +341,38 @@ void LossIndex::calculate_errors(const DataSetBatch& batch,
     }
 #endif
 
-    back_propagation.errors.device(*thread_pool_device) = outputs - targets;
+    const Index trainable_layers_number = neural_network_pointer->get_trainable_layers_number();
+    if (forward_propagation.layers(trainable_layers_number - 1)->layer_pointer->get_type() == opennn::Layer::Type::MultiPerceptron) {
+      MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1));
+      MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
+
+      Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+      for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+        cols += act.dimension(1);
+      }
+      Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+
+      for (size_t row = 0; row < activations.dimension(0); row++) {
+        for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+          activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+        }
+      }
+
+      for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+        for (size_t row = 0; row < activations.dimension(0); row++) {
+          for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+            activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+          }
+        }
+      }
+
+      back_propagation.errors.device(*thread_pool_device) = activations - targets;
+    }
+    else {
+      const TensorMap<Tensor<type, 2>> outputs(output_layer_forward_propagation->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
+
+      back_propagation.errors.device(*thread_pool_device) = outputs - targets;
+    }
 
     if(has_NAN(back_propagation.errors))
     {
@@ -369,11 +398,39 @@ void LossIndex::calculate_errors_lm(const DataSetBatch& batch,
 
     const Tensor<Index, 1> outputs_dimensions = neural_network_forward_propagation.layers(last_trainable_layer_index)->outputs_dimensions;
 
-    const TensorMap<Tensor<type, 2>> outputs(neural_network_forward_propagation.layers(last_trainable_layer_index)->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
-
     const TensorMap<Tensor<type, 2>> targets(batch.targets_data, batch.targets_dimensions(0), batch.targets_dimensions(1));
 
-    loss_index_back_propagation.errors.device(*thread_pool_device) = outputs - targets;
+    if (neural_network_forward_propagation.layers(trainable_layers_number - 1)->layer_pointer->get_type() == opennn::Layer::Type::MultiPerceptron) {
+      MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(neural_network_forward_propagation.layers(trainable_layers_number - 1));
+      MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
+
+      Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+      for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+        cols += act.dimension(1);
+      }
+      Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+
+      for (size_t row = 0; row < activations.dimension(0); row++) {
+        for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+          activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+        }
+      }
+
+      for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+        for (size_t row = 0; row < activations.dimension(0); row++) {
+          for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+            activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+          }
+        }
+      }
+
+      loss_index_back_propagation.errors.device(*thread_pool_device) = activations - targets;
+    }
+    else {
+      const TensorMap<Tensor<type, 2>> outputs(neural_network_forward_propagation.layers(last_trainable_layer_index)->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
+
+      loss_index_back_propagation.errors.device(*thread_pool_device) = outputs - targets;
+    }
 }
 
 
@@ -558,6 +615,37 @@ void LossIndex::calculate_squared_errors_jacobian_lm(const DataSetBatch& batch,
             mem_index += trainable_layers_parameters_number(i)*batch_size;
         }
             break;
+
+        case Layer::Type::MultiPerceptron:
+        {
+          MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1));
+          MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
+          Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+          for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+            cols += act.dimension(1);
+          }
+          Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+          for (size_t row = 0; row < activations.dimension(0); row++) {
+            for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+              activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+            }
+          }
+          for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+            for (size_t row = 0; row < activations.dimension(0); row++) {
+              for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+                activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+              }
+            }
+          }
+          trainable_layers_pointers(i)->calculate_squared_errors_Jacobian_lm(activations,
+            forward_propagation.layers(i),
+            loss_index_back_propagation_lm.neural_network.layers(i));
+          trainable_layers_pointers(i)->insert_squared_errors_Jacobian_lm(loss_index_back_propagation_lm.neural_network.layers(i),
+            mem_index,
+            loss_index_back_propagation_lm.squared_errors_jacobian);
+          mem_index += trainable_layers_parameters_number(i) * batch_size;
+        }
+        break;
 
         case Layer::Type::Probabilistic:
         {
@@ -809,9 +897,9 @@ void LossIndex::calculate_layers_error_gradient(const DataSetBatch& batch,
     {
         const LayerForwardPropagation* layer_forward_propagation = forward_propagation.layers(first_trainable_layers_index+i-1);
 
-        const Tensor<Index, 1> outputs_dimensions = layer_forward_propagation->outputs_dimensions;
+        //const Tensor<Index, 1> outputs_dimensions = layer_forward_propagation->outputs_dimensions;
 
-        const TensorMap<Tensor<type, 2>> outputs(layer_forward_propagation->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
+        //const TensorMap<Tensor<type, 2>> outputs(layer_forward_propagation->outputs_data, outputs_dimensions(0), outputs_dimensions(1));
 
         trainable_layers_pointers(i)->calculate_error_gradient(layer_forward_propagation->outputs_data,
                                                                forward_propagation.layers(first_trainable_layers_index+i),

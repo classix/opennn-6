@@ -3924,6 +3924,11 @@ void DataSet::set_columns_number(const Index& new_columns_number)
 }
 
 
+void DataSet::set_column_scaler(const Index& column_index, const Scaler& scalers)
+{
+  columns(column_index).scaler = scalers;
+}
+
 void DataSet::set_columns_scalers(const Scaler& scalers)
 {
     const Index columns_number = get_columns_number();

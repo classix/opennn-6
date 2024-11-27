@@ -86,6 +86,8 @@ LossIndex* TrainingStrategy::get_loss_index_pointer()
 
         case LossMethod::CROSS_ENTROPY_ERROR: return &cross_entropy_error;
 
+        case LossMethod::MULTI_ERROR: return &multi_error;
+
         default: return nullptr;
     }
 }
@@ -240,6 +242,14 @@ WeightedSquaredError* TrainingStrategy::get_weighted_squared_error_pointer()
     return &weighted_squared_error;
 }
 
+/// Returns a pointer to the multi error which is used as error.
+/// If that object does not exists, an exception is thrown.
+
+MultiError* TrainingStrategy::get_multi_error_pointer()
+{
+  return &multi_error;
+}
+
 
 /// Returns the type of the main loss algorithm composing this training strategy object.
 
@@ -280,6 +290,9 @@ string TrainingStrategy::write_loss_method() const
 
     case LossMethod::CROSS_ENTROPY_ERROR:
         return "CROSS_ENTROPY_ERROR";
+
+    case LossMethod::MULTI_ERROR:
+      return "MULTI_ERROR";
 
     default:
         return string();
@@ -395,6 +408,9 @@ string TrainingStrategy::write_loss_method_text() const
     case LossMethod::CROSS_ENTROPY_ERROR:
         return "Cross entropy error";
 
+    case LossMethod::MULTI_ERROR:
+      return "Multi error";
+
     default:
         return string();
     }
@@ -459,6 +475,10 @@ void TrainingStrategy::set_loss_method(const string& new_loss_method)
     else if(new_loss_method == "CROSS_ENTROPY_ERROR")
     {
         set_loss_method(LossMethod::CROSS_ENTROPY_ERROR);
+    }
+    else if (new_loss_method == "MULTI_ERROR")
+    {
+      set_loss_method(LossMethod::MULTI_ERROR);
     }
     else
     {
@@ -568,6 +588,7 @@ void TrainingStrategy::set_loss_index_threads_number(const int& new_threads_numb
     Minkowski_error.set_threads_number(new_threads_number);
     weighted_squared_error.set_threads_number(new_threads_number);
     cross_entropy_error.set_threads_number(new_threads_number);
+    multi_error.set_threads_number(new_threads_number);
 }
 
 
@@ -604,6 +625,7 @@ void TrainingStrategy::set_loss_index_data_set_pointer(DataSet* new_data_set_poi
     cross_entropy_error.set_data_set_pointer(new_data_set_pointer);
     weighted_squared_error.set_data_set_pointer(new_data_set_pointer);
     Minkowski_error.set_data_set_pointer(new_data_set_pointer);
+    multi_error.set_data_set_pointer(new_data_set_pointer);
 }
 
 
@@ -615,6 +637,7 @@ void TrainingStrategy::set_loss_index_neural_network_pointer(NeuralNetwork* new_
     cross_entropy_error.set_neural_network_pointer(new_neural_network_pointer);
     weighted_squared_error.set_neural_network_pointer(new_neural_network_pointer);
     Minkowski_error.set_neural_network_pointer(new_neural_network_pointer);
+    multi_error.set_neural_network_pointer(new_neural_network_pointer);
 }
 
 
@@ -635,6 +658,7 @@ void TrainingStrategy::set_display(const bool& new_display)
     cross_entropy_error.set_display(display);
     weighted_squared_error.set_display(display);
     Minkowski_error.set_display(display);
+    multi_error.set_display(display);
 
     // Optimization algorithm
 
@@ -774,6 +798,77 @@ TrainingResults TrainingStrategy::perform_training()
     }
 }
 
+/// This is the most important method of this class.
+/// It optimizes the loss index of a neural network.
+/// This method also returns a structure with the results from training.
+
+TrainingResults TrainingStrategy::perform_training(std::function<void(double)> callback)
+{
+  if (neural_network_pointer->has_long_short_term_memory_layer() || neural_network_pointer->has_recurrent_layer())
+  {
+    fix_forecasting();
+  }
+
+  //    if(neural_network_pointer->has_convolutional_layer())
+  //    {
+  //        ostringstream buffer;
+
+  //        buffer << "OpenNN Exception: TrainingStrategy class.\n"
+  //               << "TrainingResults perform_training() const method.\n"
+  //               << "Convolutional Layer is not available yet. It will be included in future versions.\n";
+
+  //        throw invalid_argument(buffer.str());
+  //    }
+
+  switch (optimization_method)
+  {
+  case OptimizationMethod::GRADIENT_DESCENT:
+  {
+    gradient_descent.set_display(display);
+
+    return gradient_descent.perform_training(callback);
+  }
+
+  case OptimizationMethod::CONJUGATE_GRADIENT:
+  {
+    conjugate_gradient.set_display(display);
+
+    return conjugate_gradient.perform_training(callback);
+  }
+
+  case OptimizationMethod::QUASI_NEWTON_METHOD:
+  {
+    quasi_Newton_method.set_display(display);
+
+    return quasi_Newton_method.perform_training(callback);
+  }
+
+  case OptimizationMethod::LEVENBERG_MARQUARDT_ALGORITHM:
+  {
+    Levenberg_Marquardt_algorithm.set_display(display);
+
+    return Levenberg_Marquardt_algorithm.perform_training(callback);
+  }
+
+  case OptimizationMethod::STOCHASTIC_GRADIENT_DESCENT:
+  {
+    stochastic_gradient_descent.set_display(display);
+
+    return stochastic_gradient_descent.perform_training(callback);
+  }
+
+  case OptimizationMethod::ADAPTIVE_MOMENT_ESTIMATION:
+  {
+    adaptive_moment_estimation.set_display(display);
+
+    return adaptive_moment_estimation.perform_training(callback);
+  }
+
+  default:
+    return TrainingResults(0);
+  }
+}
+
 
 /// Check the time steps and the batch size in forecasting problems.
 /// The batch size must be multiple of the time step.
@@ -872,6 +967,7 @@ void TrainingStrategy::write_XML(tinyxml2::XMLPrinter& file_stream) const
     case LossMethod::CROSS_ENTROPY_ERROR : cross_entropy_error.write_regularization_XML(file_stream); break;
     case LossMethod::WEIGHTED_SQUARED_ERROR : weighted_squared_error.write_regularization_XML(file_stream); break;
     case LossMethod::SUM_SQUARED_ERROR : sum_squared_error.write_regularization_XML(file_stream); break;
+    case LossMethod::MULTI_ERROR: multi_error.write_regularization_XML(file_stream); break;
     default: break;
     }
 
@@ -998,6 +1094,26 @@ void TrainingStrategy::from_XML(const tinyxml2::XMLDocument& document)
         {
             weighted_squared_error.set_positives_weight(type(1));
             weighted_squared_error.set_negatives_weight(type(1));
+        }
+
+        // Multi error
+        const tinyxml2::XMLElement* multi_error_element = loss_index_element->FirstChildElement("MultiError");
+
+        if (multi_error_element)
+        {
+          tinyxml2::XMLDocument new_document;
+
+          tinyxml2::XMLElement* multi_error_element_copy = new_document.NewElement("MultiError");
+
+          for (const tinyxml2::XMLNode* nodeFor = multi_error_element->FirstChild(); nodeFor; nodeFor = nodeFor->NextSibling())
+          {
+            tinyxml2::XMLNode* copy = nodeFor->DeepClone(&new_document);
+            multi_error_element_copy->InsertEndChild(copy);
+          }
+
+          new_document.InsertEndChild(multi_error_element_copy);
+
+          multi_error.from_XML(new_document);
         }
 
         // Regularization
