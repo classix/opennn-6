@@ -1799,8 +1799,8 @@ void NeuralNetwork::forward_propagate(const DataSetBatch& batch,
     const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = first_trainable_layer_index + 1; i <= last_trainable_layer_index; i++)
     {
-      if (layers_pointers(i)->get_type() == Layer::Type::MultiPerceptron) {
-        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(trainable_layers_number - 1));
+      if (layers_pointers(i-1)->get_type() == Layer::Type::MultiPerceptron) {
+        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i-1));
         MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
 
         Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
@@ -1855,8 +1855,8 @@ void NeuralNetwork::forward_propagate_deploy(DataSetBatch& batch,
     const Index trainable_layers_number = get_trainable_layers_number();
     for(Index i = 1; i < layers_number; i++)
     {
-      if (layers_pointers(i)->get_type() == Layer::Type::MultiPerceptron) {
-        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i));
+      if (layers_pointers(i-1)->get_type() == Layer::Type::MultiPerceptron) {
+        MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation.layers(i-1));
         MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
 
         Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
@@ -2182,10 +2182,38 @@ Tensor<type, 2> NeuralNetwork::calculate_outputs(Tensor<type, 2>& inputs)
 
     if(layers_number == 0) return Tensor<type, 2>();
 
-    type* outputs_data = neural_network_forward_propagation.layers(layers_number - 1)->outputs_data;
-    const Tensor<Index, 1> outputs_dimensions = neural_network_forward_propagation.layers(layers_number - 1)->outputs_dimensions;
+    if (neural_network_forward_propagation.layers(layers_number - 1)->layer_pointer->get_type() == Layer::Type::MultiPerceptron) {
+      MultiPerceptronLayerForwardPropagation* multiPerceptronLayerForwardPropagation = static_cast<MultiPerceptronLayerForwardPropagation*>(neural_network_forward_propagation.layers(layers_number - 1));
+      MultiPerceptronLayer* multiPerceptronLayer = static_cast<MultiPerceptronLayer*>(multiPerceptronLayerForwardPropagation->layer_pointer);
 
-    return TensorMap<Tensor<type,2>>(outputs_data, outputs_dimensions(0), outputs_dimensions(1));
+      Index cols = multiPerceptronLayerForwardPropagation->activations_reg.dimension(1);
+      for (const auto& act : multiPerceptronLayerForwardPropagation->activations_class) {
+        cols += act.dimension(1);
+      }
+      Tensor<type, 2> activations(multiPerceptronLayerForwardPropagation->activations_reg.dimension(0), cols);
+
+      for (size_t row = 0; row < activations.dimension(0); row++) {
+        for (size_t col = 0; col < multiPerceptronLayer->getRegColCount(); col++) {
+          activations(row, multiPerceptronLayer->getRegCols()[col]) = multiPerceptronLayerForwardPropagation->activations_reg(row, col);
+        }
+      }
+
+      for (size_t i = 0; i < multiPerceptronLayer->getCatCount(); i++) {
+        for (size_t row = 0; row < activations.dimension(0); row++) {
+          for (size_t col = 0; col < multiPerceptronLayer->getCatColCount()[i]; col++) {
+            activations(row, multiPerceptronLayer->getCatCols()[i][col]) = multiPerceptronLayerForwardPropagation->activations_class[i](row, col);
+          }
+        }
+      }
+
+      return activations;
+    }
+    else {
+      type* outputs_data = neural_network_forward_propagation.layers(layers_number - 1)->outputs_data;
+      const Tensor<Index, 1> outputs_dimensions = neural_network_forward_propagation.layers(layers_number - 1)->outputs_dimensions;
+
+      return TensorMap<Tensor<type, 2>>(outputs_data, outputs_dimensions(0), outputs_dimensions(1));
+    }
 }
 
 

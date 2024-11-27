@@ -964,9 +964,9 @@ void PerceptronLayer::calculate_hidden_delta_multi_perceptron(MultiPerceptronLay
         deltas(row, col) += delta_class(row, col);
       }
     }
-
-    back_propagation->deltas_data = deltas.data();
   }
+
+  //back_propagation->deltas_data = deltas.data();
 }
 
 

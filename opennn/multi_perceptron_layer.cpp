@@ -986,6 +986,87 @@ namespace opennn
   }
 
 
+  void MultiPerceptronLayer::calculate_error_gradient(type* inputs_data,
+    LayerForwardPropagation* forward_propagation,
+    LayerBackPropagation* back_propagation) const
+  {
+    MultiPerceptronLayerForwardPropagation* multi_perceptron_layer_forward_propagation =
+      static_cast<MultiPerceptronLayerForwardPropagation*>(forward_propagation);
+
+    MultiPerceptronLayerBackPropagation* multi_perceptron_layer_back_propagation =
+      static_cast<MultiPerceptronLayerBackPropagation*>(back_propagation);
+
+    const Index batch_samples_number = back_propagation->batch_samples_number;
+    const TensorMap<Tensor<type, 2>> inputs(inputs_data, batch_samples_number, get_inputs_number());
+
+    Tensor<type, 1> biases_derivatives_reg(regCols.size());
+    biases_derivatives_reg.device(*thread_pool_device) =
+      (multi_perceptron_layer_back_propagation->delta_reg * multi_perceptron_layer_forward_propagation->activations_derivatives_reg).sum(Eigen::array<Index, 1>({ 0 }));
+    for (size_t col = 0; col < regCols.size(); col++) {
+      multi_perceptron_layer_back_propagation->biases_derivatives(regCols[col]) = biases_derivatives_reg(col);
+    }
+
+    Tensor<type, 2> synaptic_weights_derivatives_reg(multi_perceptron_layer_back_propagation->synaptic_weights_derivatives.dimension(0), regCols.size());
+    synaptic_weights_derivatives_reg.device(*thread_pool_device) =
+      inputs.contract(multi_perceptron_layer_back_propagation->delta_reg * multi_perceptron_layer_forward_propagation->activations_derivatives_reg, AT_B);
+    for (size_t row = 0; row < multi_perceptron_layer_back_propagation->synaptic_weights_derivatives.dimension(0); row++) {
+      for (size_t col = 0; col < regCols.size(); col++) {
+        multi_perceptron_layer_back_propagation->synaptic_weights_derivatives(row, regCols[col]) = synaptic_weights_derivatives_reg(row, col);
+      }
+    }
+
+    for (size_t i = 0; i < catCols.size(); i++) {
+      const Index samples_number = inputs.dimension(0);
+      const Index neurons_number = catCols[i].size();
+
+      Tensor<type, 1> biases_derivatives_class(neurons_number);
+      Tensor<type, 2> synaptic_weights_derivatives_class(multi_perceptron_layer_back_propagation->synaptic_weights_derivatives.dimension(0), neurons_number);
+
+      if (neurons_number == 1 || activation_function_class != Softmax) // Binary gradient
+      {
+        TensorMap< Tensor<type, 2> > activations_derivatives(multi_perceptron_layer_forward_propagation->activations_derivatives_class[i].data(), samples_number, neurons_number);
+
+        biases_derivatives_class.device(*thread_pool_device) =
+          (multi_perceptron_layer_back_propagation->delta_class[i] * activations_derivatives).sum(Eigen::array<Index, 1>({ 0 }));
+
+        synaptic_weights_derivatives_class.device(*thread_pool_device) =
+          inputs.contract((multi_perceptron_layer_back_propagation->delta_class[i] * activations_derivatives), AT_B);
+      }
+      else // Multiple gradient
+      {
+        const Index step = neurons_number * neurons_number;
+
+        for (Index s = 0; s < samples_number; s++)
+        {
+          multi_perceptron_layer_back_propagation->delta_row[i] = multi_perceptron_layer_back_propagation->delta_class[i].chip(s, 0);
+
+          TensorMap< Tensor<type, 2> > activations_derivatives_matrix(multi_perceptron_layer_forward_propagation->activations_derivatives_class[i].data() + s * step,
+            neurons_number, neurons_number);
+
+          multi_perceptron_layer_back_propagation->error_combinations_derivatives[i].chip(s, 0) =
+            multi_perceptron_layer_back_propagation->delta_row[i].contract(activations_derivatives_matrix, AT_B);
+        }
+
+        biases_derivatives_class.device(*thread_pool_device) =
+          (multi_perceptron_layer_back_propagation->error_combinations_derivatives[i]).sum(Eigen::array<Index, 1>({ 0 }));
+
+        synaptic_weights_derivatives_class.device(*thread_pool_device) =
+          inputs.contract(multi_perceptron_layer_back_propagation->error_combinations_derivatives[i], AT_B);
+      }
+
+      for (size_t col = 0; col < neurons_number; col++) {
+        multi_perceptron_layer_back_propagation->biases_derivatives(catCols[i][col]) = biases_derivatives_class(col);
+      }
+
+      for (size_t row = 0; row < multi_perceptron_layer_back_propagation->synaptic_weights_derivatives.dimension(0); row++) {
+        for (size_t col = 0; col < neurons_number; col++) {
+          multi_perceptron_layer_back_propagation->synaptic_weights_derivatives(row, catCols[i][col]) = synaptic_weights_derivatives_class(row, col);
+        }
+      }
+    }
+  }
+
+
   void MultiPerceptronLayer::insert_gradient(LayerBackPropagation* back_propagation,
     const Index& index,
     Tensor<type, 1>& gradient) const

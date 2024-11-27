@@ -174,6 +174,10 @@ namespace opennn
       LayerForwardPropagation*,
       LayerBackPropagation*) const;
 
+    void calculate_error_gradient(type*,
+      LayerForwardPropagation*,
+      LayerBackPropagation*) const final;
+
     void insert_gradient(LayerBackPropagation*,
       const Index&,
       Tensor<type, 1>&) const;
