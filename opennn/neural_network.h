@@ -52,8 +52,8 @@ class NeuralNetwork
 {
 
 public:
-
-   enum class ProjectType{Approximation, Classification, Forecasting, ImageClassification, TextClassification, TextGeneration, AutoAssociation};
+   // ProjectType::Mixed has been added by ClassiX to support networks with both approximation and classification output layers
+   enum class ProjectType{Approximation, Classification, Mixed, Forecasting, ImageClassification, TextClassification, TextGeneration, AutoAssociation};
 
    // Constructors
 
